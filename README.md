@@ -3,6 +3,11 @@
 [![CI](https://github.com/thiagosilva92/ledger-sync-server/actions/workflows/ci.yaml/badge.svg)](https://github.com/thiagosilva92/ledger-sync-server/actions/workflows/ci.yaml)
 [![codecov](https://codecov.io/gh/thiagosilva92/ledger-sync-server/graph/badge.svg)](https://codecov.io/gh/thiagosilva92/ledger-sync-server)
 
+**Live**: https://ledger-sync-api.mangocoast-d3d45471.brazilsouth.azurecontainerapps.io/scalar/v1
+— a real, running instance on Azure Container Apps, not a screenshot. See
+[Deployment](#deployment) below for what's actually running there versus
+what only exists in `docker-compose.yml`, and why.
+
 The server side of `event-sourced-ledger`'s sync story: a minimal ASP.NET
 Core API that lets multiple devices exchange events through a shared
 remote, playing the role `FakeSyncTransport` stands in for on the client
@@ -240,7 +245,15 @@ post-MVP roadmap, not scope that was missing from day one.
   with a key. 3 new integration tests (23 total): the document is valid
   JSON and describes both `/events` operations, and the UI page loads,
   all without an API key.
-- ⏳ A real, public, deployed instance
+- ✅ A real, public, deployed instance — Azure Container Apps + a
+  managed PostgreSQL Flexible Server, verified end-to-end against the
+  live URL (health checks, auth rejection, push, pull, the OpenAPI
+  docs) — see [Deployment](#deployment) for what's deliberately
+  simplified versus the full local `docker-compose` topology, and for
+  two real deployment obstacles found and fixed along the way.
+
+**Every item in this repo's roadmap, from the MVP through the last
+post-MVP checkpoint, is now done.**
 
 ### A bug only a real HTTP call could have caught
 
@@ -264,6 +277,59 @@ string from an environment variable layered on late in `Program.cs`
 before `Build()` — the integration test caught something the unit tests
 (which never construct a `WebApplicationFactory` at all) structurally
 could not.
+
+## Deployment
+
+The [live instance](https://ledger-sync-api.mangocoast-d3d45471.brazilsouth.azurecontainerapps.io/scalar/v1)
+is deliberately a simplified deployment, not the full `docker-compose.yml`
+topology: one Container App instance (scales to zero when idle) plus a
+managed PostgreSQL Flexible Server, not the gateway/2-replica/Jaeger
+stack. That's a cost and complexity decision, not a capability gap — the
+horizontal-scaling story (round-robin, active health-check failover) is
+fully built and already proven in this README's own
+[horizontal scaling](#status) section; a live public instance of *that*
+specific topology would need a second replica and a gateway running
+24/7, for no benefit beyond "look, it's the same thing you can already
+see running locally."
+
+Deployed to Azure because Azure Container Apps' Consumption plan has an
+**ongoing, no-expiration** free monthly grant (180,000 vCPU-seconds,
+2M requests) — unlike most competing platforms' free tiers as of 2026,
+which have either disappeared entirely or only cover a first trial
+period. Resources: a Container Apps environment, one Container App
+(`min-replicas 0`, so it scales to zero and costs nothing while idle —
+the trade-off is a cold start on the first request after a quiet
+period), and a PostgreSQL Flexible Server on the smallest Burstable SKU
+(`Standard_B1ms`).
+
+### Two real obstacles hit deploying this, not hypothetical ones
+
+**ACR Tasks are disabled on new trial subscriptions.** `az containerapp up
+--source .` normally builds the image remotely via Azure Container
+Registry's build service (ACR Tasks) — Azure blocks that specific
+capability for brand-new trial subscriptions as an anti-abuse measure
+(it's a plausible cryptomining vector), returning
+`TasksOperationsNotAllowed`. Worked around by building the image locally
+with the same Docker installation `docker-compose` already needs, then
+`docker push`-ing it straight to a manually-created ACR — registry
+push/pull isn't gated the same way the remote build service is.
+
+**`--migrate-only` swallowed the next argument.** Running the compiled
+binary directly against the Azure database
+(`Ledger.SyncServer.dll --migrate-only "--ConnectionStrings:SyncDatabase=..."`)
+threw the exact "missing connection string" exception the earlier
+config-timing bug did — for an unrelated reason this time.
+.NET's command-line configuration provider treats an argument with no
+`=` (like `--migrate-only`) as expecting its value in the *next* token,
+so it silently consumed the entire connection string as `--migrate-only`'s
+value, leaving `ConnectionStrings:SyncDatabase` never set. Not a bug in
+this repo's code — `args.Contains("--migrate-only")` (a raw string
+check, not configuration-based) still worked exactly as designed, which
+is why `docker-compose.yml`'s `migrator` service (connection string via
+an environment variable, `--migrate-only` as the *only* command-line
+argument) was never affected. Fixed for the one-off manual migration
+by putting the self-contained `--key=value` argument first and the
+bare flag last.
 
 ## Running
 
