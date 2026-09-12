@@ -1,5 +1,4 @@
 <Project>
-
   <!--
     Central package version management: every PackageReference across the
     solution omits its Version attribute and gets it from here instead, so
@@ -9,12 +8,19 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
-
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <!--
+      Pinned to match the EF Core version Npgsql.EntityFrameworkCore.PostgreSQL
+      10.0.3 itself depends on (10.0.4) — Design defaults to a newer patch
+      (10.0.12) that a project referencing both ends up with two
+      irreconcilable EF Core assembly versions in scope at once.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
-
 </Project>

@@ -41,10 +41,22 @@ database or HTTP.
   ids already on record, which of an incoming batch are genuinely new,
   including within the same batch — a retried push can legitimately
   repeat an id). 6 unit tests, no database, no HTTP.
-- ⏳ Infrastructure (EF Core + PostgreSQL, tested against a real Postgres
-  via Testcontainers) — next
+- ✅ Infrastructure — `SyncDbContext` + `EventRow` (EF Core mapping to a
+  single `events` table: `Sequence` identity primary key, unique index on
+  `EventId`) and `PostgresEventLog : IEventLog`, the only implementation
+  of the port `Domain` defines, the same interface/adapter split
+  `EventStore`/`DriftEventStore` uses on the client. A real, committed EF
+  Core migration (`InitialCreate`), applied with `Database.MigrateAsync()`
+  — not `EnsureCreatedAsync()`, which would prove nothing about whether
+  the migration itself is correct. 6 integration tests run against a real
+  PostgreSQL instance via Testcontainers (a fresh container per test,
+  full isolation, no shared-database cleanup logic to get wrong):
+  sequential sequence assignment, idempotent retry, mixed known/new
+  batches, cursor pagination, and persistence across a fresh `EventLog`
+  instance over the same database (the restart-survival proof, mirroring
+  `DriftDeviceIdentityStore`'s equivalent test on the client).
 - ⏳ API host (the two Minimal API endpoints) — next
-- ⏳ CI (GitHub Actions)
+- ⏳ CI (GitHub Actions, coverage via Codecov)
 
 ## Running
 
@@ -53,4 +65,7 @@ dotnet build
 dotnet test
 ```
 
-Requires the .NET SDK version pinned in [global.json](global.json).
+Requires the .NET SDK version pinned in [global.json](global.json), and
+Docker running locally (`tests/Ledger.SyncServer.IntegrationTests` needs
+it for Testcontainers — `dotnet test tests/Ledger.SyncServer.UnitTests`
+runs without it).

@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Ledger.SyncServer.Domain/Ledger.SyncServer.Domain.csproj" />
+    <Project Path="src/Ledger.SyncServer.Infrastructure/Ledger.SyncServer.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Ledger.SyncServer.IntegrationTests/Ledger.SyncServer.IntegrationTests.csproj" />
     <Project Path="tests/Ledger.SyncServer.UnitTests/Ledger.SyncServer.UnitTests.csproj" />
   </Folder>
 </Solution>
