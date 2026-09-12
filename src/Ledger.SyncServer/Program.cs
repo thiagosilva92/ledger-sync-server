@@ -1,9 +1,20 @@
 using Ledger.SyncServer;
+using Ledger.SyncServer.Authentication;
 using Ledger.SyncServer.Domain;
 using Ledger.SyncServer.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<ApiKeySettings>(
+    builder.Configuration.GetSection(ApiKeySettings.SectionName));
+builder.Services.AddSingleton<IApiKeyValidator, ApiKeyValidator>();
+builder.Services
+    .AddAuthentication(ApiKeyAuthenticationOptions.DefaultScheme)
+    .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationOptions.DefaultScheme,
+        _ => { });
+builder.Services.AddAuthorization();
 
 // The connection string is read lazily, inside this callback, rather than
 // straight off `builder.Configuration` up front — this runs when the DI
@@ -22,6 +33,9 @@ builder.Services.AddDbContext<SyncDbContext>(options =>
 builder.Services.AddScoped<IEventLog, PostgresEventLog>();
 
 var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapEventsEndpoints();
 

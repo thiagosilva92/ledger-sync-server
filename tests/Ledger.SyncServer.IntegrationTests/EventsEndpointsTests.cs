@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Ledger.SyncServer;
+using Ledger.SyncServer.Authentication;
 using Ledger.SyncServer.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -27,6 +28,12 @@ namespace Ledger.SyncServer.IntegrationTests;
         + "disposal contract.")]
 public sealed class EventsEndpointsTests : IAsyncLifetime
 {
+    /// The plaintext key every test in this class authenticates with —
+    /// only its hash (see <c>InitializeAsync</c>) is ever configured on
+    /// the server, the same as a real deployment would only ever be
+    /// handed a hash.
+    private const string TestApiKey = "test-device-key";
+
     private readonly PostgreSqlContainer _container =
         new PostgreSqlBuilder("postgres:18-alpine").Build();
 
@@ -44,6 +51,7 @@ public sealed class EventsEndpointsTests : IAsyncLifetime
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:SyncDatabase"] = _container.GetConnectionString(),
+                    ["ApiKeys:Hashes:0"] = ApiKeyHasher.Hash(TestApiKey),
                 });
             });
         });
@@ -58,6 +66,7 @@ public sealed class EventsEndpointsTests : IAsyncLifetime
         }
 
         _client = _factory.CreateClient();
+        _client.DefaultRequestHeaders.Add(ApiKeyAuthenticationOptions.HeaderName, TestApiKey);
     }
 
     public async Task DisposeAsync()
@@ -148,5 +157,26 @@ public sealed class EventsEndpointsTests : IAsyncLifetime
         Assert.NotNull(secondPage);
         Assert.Equal(2, secondPage.Events.Count);
         Assert.NotEqual(firstPage.Events[0].GetRawText(), secondPage.Events[0].GetRawText());
+    }
+
+    [Fact]
+    public async Task A_request_with_no_api_key_is_rejected_with_401()
+    {
+        using var anonymousClient = _factory.CreateClient();
+
+        var response = await anonymousClient.GetAsync("/events?after=0");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_request_with_a_wrong_api_key_is_rejected_with_401()
+    {
+        using var wrongKeyClient = _factory.CreateClient();
+        wrongKeyClient.DefaultRequestHeaders.Add(ApiKeyAuthenticationOptions.HeaderName, "wrong-key");
+
+        var response = await wrongKeyClient.GetAsync("/events?after=0");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 }

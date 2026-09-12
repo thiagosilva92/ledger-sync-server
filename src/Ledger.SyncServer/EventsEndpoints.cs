@@ -23,8 +23,8 @@ public static class EventsEndpoints
 
     public static IEndpointRouteBuilder MapEventsEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/events", PushAsync);
-        app.MapGet("/events", PullAsync);
+        app.MapPost("/events", PushAsync).RequireAuthorization();
+        app.MapGet("/events", PullAsync).RequireAuthorization();
         return app;
     }
 

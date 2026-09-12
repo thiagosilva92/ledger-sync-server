@@ -21,6 +21,37 @@ other end of) asks for — nothing more:
 - `GET /events?after={sequence}&limit={n}` — return events after a
   sequence cursor, paginated.
 
+Both require a valid API key in the `X-Api-Key` header — see
+[Authentication](#authentication) below.
+
+## Authentication
+
+Every request needs `X-Api-Key: <key>`. There's no self-service "register
+a device" endpoint — that would be its own chicken-and-egg authentication
+problem — so keys are generated and configured out-of-band by whoever
+runs the server, one per device.
+
+Only a key's SHA-256 hash is ever configured or stored — never the key
+itself, the same reason a password is never stored in plaintext.
+Generate a new key and its hash (PowerShell):
+
+```powershell
+$keyBytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+$key = [Convert]::ToBase64String($keyBytes)
+$hashBytes = [System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($key))
+$hash = [Convert]::ToHexString($hashBytes).ToLower()
+
+Write-Host "Key (give this to the device, never store it):`n$key"
+Write-Host "Hash (put this in ApiKeys:Hashes on the server):`n$hash"
+```
+
+Add the hash to `appsettings.json`, an environment variable
+(`ApiKeys__Hashes__0`), or user-secrets — a hash can't be reversed back
+into the key it came from, but a real deployment's configuration still
+shouldn't be committed to source control, for the same reason a
+password's config file never is even though the hash inside it is
+already one-way.
+
 ## Why this server doesn't need to understand the ledger's domain
 
 It stores an event's `eventId` and its raw payload, and nothing else. It
@@ -76,6 +107,32 @@ database or HTTP.
   `Testcontainers.PostgreSql` needs. Verified by running the exact same
   command sequence locally before trusting it in CI, the same discipline
   as every other checkpoint in this repo (and the client repo before it).
+
+**MVP complete at this point**: push, pull, idempotent, cursor-paginated,
+CI-verified against a real database. Everything below is the deliberate
+post-MVP roadmap, not scope that was missing from day one.
+
+- ✅ API key authentication — `ApiKeyAuthenticationHandler`, a proper
+  ASP.NET Core `AuthenticationHandler<TOptions>` (not ad-hoc middleware),
+  checking `X-Api-Key` against SHA-256 hashes in configuration via
+  constant-time comparison (`CryptographicOperations.FixedTimeEquals`).
+  No key is ever stored, only its hash — see
+  [Authentication](#authentication) above. No self-service device
+  registration endpoint on purpose (that's its own bootstrapping
+  problem); keys are provisioned out-of-band by whoever runs the server.
+  5 new tests (12 unit, 13 integration total): hash matching against one
+  or several configured keys, missing/wrong key rejected with 401, and
+  every existing endpoint test updated to authenticate — proving the new
+  requirement doesn't just exist, it's actually enforced on the
+  endpoints that matter.
+- ⏳ Health checks — next
+- ⏳ Horizontal scaling demo (docker-compose, multiple replicas, a
+  reverse proxy)
+- ⏳ Rate limiting
+- ⏳ Structured logging + OpenTelemetry tracing
+- ⏳ Resilient database connection (`EnableRetryOnFailure`)
+- ⏳ OpenAPI/Swagger
+- ⏳ A real, public, deployed instance
 
 ### A bug only a real HTTP call could have caught
 
