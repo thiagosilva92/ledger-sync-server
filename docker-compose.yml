@@ -11,9 +11,12 @@ x-api: &api
     # from a secret store, not a value baked into a committed compose
     # file).
     ApiKeys__Hashes__0: 59b69b7c26135a56dda94467422ea4910356e0271b520f85f2c77ede5e55f0dc
+    Observability__OtlpEndpoint: http://jaeger:4317
   depends_on:
     migrator:
       condition: service_completed_successfully
+    jaeger:
+      condition: service_started
 
 services:
   postgres:
@@ -72,9 +75,21 @@ services:
       dockerfile: src/Ledger.SyncServer.Gateway/Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      Observability__OtlpEndpoint: http://jaeger:4317
     depends_on:
       - api1
       - api2
+      - jaeger
+
+  # All-in-one Jaeger: OTLP receiver + storage + UI in one container —
+  # the local-demo equivalent of the OTel Collector + real backend a
+  # production deployment would run instead. UI on :16686; every service
+  # above exports traces to it on :4317 (OTLP/gRPC).
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    ports:
+      - "16686:16686"
 
 volumes:
   postgres-data:

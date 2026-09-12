@@ -183,7 +183,39 @@ post-MVP roadmap, not scope that was missing from day one.
   12 unit, 20 integration): within-limit requests succeed, exceeding it
   returns `429`, and two different device keys have independent,
   unaffected budgets.
-- ⏳ Structured logging + OpenTelemetry tracing
+- ✅ Structured logging + distributed tracing — Serilog (structured JSON
+  to stdout, the shape a real log collector actually wants) and
+  OpenTelemetry, in both the API and the gateway.
+  - `Enrich.WithSpan()` puts the active `TraceId`/`SpanId` on every log
+    line — the same trace ID Jaeger shows for that request, so a log
+    line and its distributed trace can be pivoted between instead of
+    being two disconnected systems that happen to describe the same
+    call.
+  - Tracing instrumentation is always on; only the OTLP *export* is
+    conditional on `Observability:OtlpEndpoint` being configured — a
+    plain `dotnet test`/`dotnet run` with no collector nearby never
+    spends its life quietly retrying a connection to nobody.
+  - Npgsql's own `ActivitySource` (built into the driver since v6) is
+    just told to listen (`AddSource("Npgsql")`) — every SQL command
+    lands in the same trace as the HTTP request that caused it, with no
+    query-tracing code of this repo's own to maintain.
+  - The gateway adds `HttpClientInstrumentation` for the outgoing call
+    YARP makes to whichever replica it picked; .NET's automatic W3C
+    `traceparent` propagation over `HttpClient` (no extra wiring) is
+    what turns "gateway request" and "replica request" into *one*
+    connected trace instead of two that happen to be about the same call.
+  - `docker-compose.yml` adds a Jaeger all-in-one container (OTLP
+    receiver + UI on `:16686`) as the local-demo stand-in for a real
+    OTel Collector + backend. Verified by actually generating traffic
+    and reading it back out of Jaeger's own API, not just by the wiring
+    compiling: a real `POST /events` produced one trace
+    (`1ec57fbd6890c3f242326c118f1a6171`) with four connected spans —
+    `POST /{**catch-all}` (gateway's route match) → `POST` (the outgoing
+    call to the replica) → `POST /events` (the replica handling it) →
+    `postgresql` (the actual insert) — and a log line from that same
+    request carried the identical `TraceId`, confirming the log/trace
+    correlation actually works, not just that both features exist
+    independently.
 - ⏳ Resilient database connection (`EnableRetryOnFailure`)
 - ⏳ OpenAPI/Swagger
 - ⏳ A real, public, deployed instance
@@ -237,10 +269,11 @@ dotnet run --project src/Ledger.SyncServer -- --ConnectionStrings:SyncDatabase="
 docker compose up --build
 ```
 
-Brings up Postgres, runs the schema migration once, starts both API
-replicas, and starts the gateway on `http://localhost:8080` — the only
-port exposed to the host; `api1`/`api2` are only reachable from inside
-the compose network, through the gateway.
+Brings up Postgres, Jaeger, runs the schema migration once, starts both
+API replicas, and starts the gateway on `http://localhost:8080` — the
+only port exposed to the host; `api1`/`api2` are only reachable from
+inside the compose network, through the gateway. Jaeger's UI is at
+`http://localhost:16686` — every service exports traces to it.
 
 The compose file bakes in the hash of a fixed demo key,
 `demo-local-only-key` — fine for `docker compose up` on your own machine,
@@ -255,6 +288,24 @@ curl -X POST http://localhost:8080/events \
 
 curl "http://localhost:8080/events?after=0" -H "X-Api-Key: demo-local-only-key"
 ```
+
+On Windows PowerShell, `curl` is aliased to `Invoke-WebRequest`, which
+doesn't accept this syntax, and PowerShell's own argument quoting mangles
+embedded `"` characters passed to `curl.exe` directly — found by actually
+trying it, not assumed. Use `Invoke-RestMethod` instead:
+
+```powershell
+$headers = @{ "X-Api-Key" = "demo-local-only-key" }
+$body = '[{"eventId":"evt-1","aggregateId":"acc-1","eventType":"demo","timestamp":"1000-0-node","payload":{"hello":"world"}}]'
+Invoke-RestMethod -Uri "http://localhost:8080/events" -Method Post -Headers $headers -ContentType "application/json" -Body $body
+Invoke-RestMethod -Uri "http://localhost:8080/events?after=0" -Headers $headers
+```
+
+Open `http://localhost:16686`, search for service `ledger-sync-server-gateway`,
+and the request above shows up as one trace spanning the gateway's route
+match, the outgoing call to whichever replica handled it, that replica's
+own `POST /events`, and the Postgres command it issued — four spans, one
+trace, two services.
 
 `docker compose down -v` tears everything down, including the Postgres
 volume.

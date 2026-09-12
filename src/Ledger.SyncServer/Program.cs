@@ -8,8 +8,51 @@ using Ledger.SyncServer.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Serilog;
+using Serilog.Enrichers.Span;
+using Serilog.Formatting.Compact;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Structured JSON to stdout — the shape a real deployment's log
+// collector actually wants, not the human-formatted text ASP.NET Core
+// defaults to. Enrich.WithSpan() is what makes each log line carry the
+// TraceId/SpanId of whatever request it happened during, so a log line
+// and the distributed trace it came from can be pivoted between —
+// without it, logs and traces are two disconnected systems that happen
+// to describe the same request.
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .Enrich.FromLogContext()
+    .Enrich.WithSpan()
+    .WriteTo.Console(new RenderedCompactJsonFormatter()));
+
+// Tracing instrumentation is always on (near-zero cost when nothing's
+// listening) — only the OTLP *export* is conditional on
+// Observability:OtlpEndpoint being configured. Without this split, every
+// plain `dotnet test`/`dotnet run` with no collector nearby would spend
+// its life quietly retrying a connection to nobody.
+var otlpEndpoint = builder.Configuration["Observability:OtlpEndpoint"];
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("ledger-sync-server"))
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddAspNetCoreInstrumentation()
+            // Npgsql has emitted its own ActivitySource-based traces
+            // since v6 — this just has to be told to listen, not
+            // reimplemented. One line gets every SQL command this
+            // server issues into the same trace as the HTTP request
+            // that caused it.
+            .AddSource("Npgsql");
+
+        if (!string.IsNullOrEmpty(otlpEndpoint))
+        {
+            tracing.AddOtlpExporter(otlp => otlp.Endpoint = new Uri(otlpEndpoint));
+        }
+    });
 
 builder.Services.Configure<ApiKeySettings>(
     builder.Configuration.GetSection(ApiKeySettings.SectionName));
@@ -85,6 +128,12 @@ if (args.Contains("--migrate-only"))
     await db.Database.MigrateAsync();
     return;
 }
+
+// One structured log line per request (method, path, status, elapsed) —
+// replaces the multi-line default ASP.NET Core request logging, and
+// (via Enrich.WithSpan() above) carries the same TraceId Jaeger shows
+// for that request.
+app.UseSerilogRequestLogging();
 
 app.UseAuthentication();
 app.UseAuthorization();
