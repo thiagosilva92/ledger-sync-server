@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Ledger.SyncServer.Domain;
+using Ledger.SyncServer.RateLimiting;
 
 namespace Ledger.SyncServer;
 
@@ -23,8 +24,12 @@ public static class EventsEndpoints
 
     public static IEndpointRouteBuilder MapEventsEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/events", PushAsync).RequireAuthorization();
-        app.MapGet("/events", PullAsync).RequireAuthorization();
+        app.MapPost("/events", PushAsync)
+            .RequireAuthorization()
+            .RequireRateLimiting(RateLimitingPolicies.PerApiKey);
+        app.MapGet("/events", PullAsync)
+            .RequireAuthorization()
+            .RequireRateLimiting(RateLimitingPolicies.PerApiKey);
         return app;
     }
 

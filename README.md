@@ -169,7 +169,20 @@ post-MVP roadmap, not scope that was missing from day one.
     at `/var/lib/postgresql`, not directly at `.../data`) — discovered
     by the container actually failing to start, not by reading the
     changelog first.
-- ⏳ Rate limiting
+- ✅ Rate limiting — ASP.NET Core's built-in `Microsoft.AspNetCore.RateLimiting`
+  (no external package), a fixed-window limiter partitioned by the
+  authenticated device's API key hash — never by IP, since several
+  devices sharing a NAT/carrier IP shouldn't share one budget, and one
+  device switching networks shouldn't reset its own. The key hash comes
+  from a claim `ApiKeyAuthenticationHandler` already sets during
+  authentication, so rate limiting adds no new identity concept of its
+  own. Both `PermitLimit` and `WindowSeconds` are configuration, not
+  constants — tests configure a deliberately tiny limit (2 requests /
+  10s) rather than firing 101 real requests to prove a 100/minute
+  production default gets enforced. 3 new integration tests (32 total:
+  12 unit, 20 integration): within-limit requests succeed, exceeding it
+  returns `429`, and two different device keys have independent,
+  unaffected budgets.
 - ⏳ Structured logging + OpenTelemetry tracing
 - ⏳ Resilient database connection (`EnableRetryOnFailure`)
 - ⏳ OpenAPI/Swagger

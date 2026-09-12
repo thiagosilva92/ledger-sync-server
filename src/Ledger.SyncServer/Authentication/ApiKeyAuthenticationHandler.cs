@@ -8,10 +8,13 @@ namespace Ledger.SyncServer.Authentication;
 /// A minimal <see cref="AuthenticationHandler{TOptions}"/> for one scheme:
 /// present a valid key in the <see cref="ApiKeyAuthenticationOptions.HeaderName"/>
 /// header, or the request never reaches an endpoint marked
-/// <c>RequireAuthorization()</c>. No roles, no claims beyond "this request
-/// presented *a* valid key" — every device trusted with a key can push
-/// and pull equally, which matches what this server actually needs: it
-/// isn't multi-tenant, so there's nothing for a role to distinguish yet.
+/// <c>RequireAuthorization()</c>. No roles — every device trusted with a
+/// key can push and pull equally, which matches what this server
+/// actually needs: it isn't multi-tenant, so there's nothing for a role
+/// to distinguish yet. The one claim it does carry is the key's own
+/// hash, as a stable per-device identity — used to partition rate
+/// limits per device rather than per raw IP (see
+/// `RateLimiting/RateLimitingPolicies.cs`), never the key itself.
 public sealed class ApiKeyAuthenticationHandler(
     IOptionsMonitor<ApiKeyAuthenticationOptions> options,
     ILoggerFactory logger,
@@ -33,7 +36,9 @@ public sealed class ApiKeyAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.Fail("Invalid API key."));
         }
 
-        var identity = new ClaimsIdentity(ApiKeyAuthenticationOptions.DefaultScheme);
+        var identity = new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, ApiKeyHasher.Hash(apiKey))],
+            ApiKeyAuthenticationOptions.DefaultScheme);
         var principal = new ClaimsPrincipal(identity);
         var ticket = new AuthenticationTicket(principal, ApiKeyAuthenticationOptions.DefaultScheme);
         return Task.FromResult(AuthenticateResult.Success(ticket));

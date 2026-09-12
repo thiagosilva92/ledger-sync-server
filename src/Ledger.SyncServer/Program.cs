@@ -1,8 +1,13 @@
+using System.Security.Claims;
+using System.Threading.RateLimiting;
 using Ledger.SyncServer;
 using Ledger.SyncServer.Authentication;
 using Ledger.SyncServer.Domain;
 using Ledger.SyncServer.Infrastructure;
+using Ledger.SyncServer.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +40,31 @@ builder.Services.AddScoped<IEventLog, PostgresEventLog>();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<SyncDbContext>(name: "postgres", tags: ["ready"]);
 
+builder.Services.Configure<RateLimitingSettings>(
+    builder.Configuration.GetSection(RateLimitingSettings.SectionName));
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(RateLimitingPolicies.PerApiKey, context =>
+    {
+        var settings = context.RequestServices
+            .GetRequiredService<IOptions<RateLimitingSettings>>().Value;
+        // Partitioned by the authenticated device's key hash (set as a
+        // claim by ApiKeyAuthenticationHandler), not by IP — several
+        // devices behind the same NAT/carrier IP shouldn't share one
+        // budget, and a single device switching networks shouldn't reset
+        // one either.
+        var partitionKey = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? "unauthenticated";
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = settings.PermitLimit,
+            Window = TimeSpan.FromSeconds(settings.WindowSeconds),
+            QueueLimit = 0,
+        });
+    });
+});
+
 var app = builder.Build();
 
 // Migrations run as a separate, one-shot step (the docker-compose
@@ -58,6 +88,7 @@ if (args.Contains("--migrate-only"))
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapEventsEndpoints();
 app.MapHealthCheckEndpoints();
