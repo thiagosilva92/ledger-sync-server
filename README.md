@@ -331,6 +331,35 @@ argument) was never affected. Fixed for the one-off manual migration
 by putting the self-contained `--key=value` argument first and the
 bare flag last.
 
+### From manual CLI commands to a real pipeline
+
+Everything above was done by hand, one `az` command at a time — which is
+honest about how the first deploy actually happened, but not
+reproducible: recreating the resource group today would mean re-reading
+this section rather than running something. [`infra/`](infra/) closes
+that gap:
+
+- **[`infra/main.bicep`](infra/main.bicep)** — the same resources
+  described above (Container Apps environment, Container App, ACR,
+  PostgreSQL Flexible Server), as code. Validated against the live
+  environment with `az deployment group what-if` — see
+  [`infra/README.md`](infra/README.md#known-deliberate-diffs-from-the-live-environment)
+  for the two harmless, understood diffs that showed up (an
+  auto-generated Log Analytics workspace name and a timestamped
+  firewall-rule name), rather than papering over them.
+- **A `deploy` job in [`ci.yaml`](.github/workflows/ci.yaml)** — on every
+  merge to `main`: builds the image, pushes it to ACR, updates the
+  Container App to the new tag. Authenticates via an OIDC federated
+  Azure AD app registration, not a stored client secret.
+- **[`infra.yaml`](.github/workflows/infra.yaml)** — applying
+  `main.bicep` is a separate, `workflow_dispatch`-only pipeline
+  (defaults to a `what-if` preview; applying requires explicitly
+  checking a box), so that a routine code push can never touch the
+  database, its password, or resource SKUs. Infra changes are rare and
+  deliberate; app deploys are frequent and automatic — the pipeline
+  keeps that distinction rather than collapsing both into "push to
+  main."
+
 ## Running
 
 ```bash

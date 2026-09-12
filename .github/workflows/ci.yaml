@@ -44,3 +44,53 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: ./coverage
           fail_ci_if_error: false
+
+  # Runs only for a push that landed on main (never for PRs) and only after
+  # build-and-test passes — so a merge is what ships, not what merely built.
+  # This is deliberately just an app deploy: build the image, push it, point
+  # the existing Container App at it. Infrastructure changes (new resources,
+  # SKU changes, the DB password) are a separate, manually-triggered
+  # workflow — see infra.yaml — so that a routine code change can never
+  # accidentally touch the database or its credentials.
+  deploy:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      ACR_LOGIN_SERVER: ledgersyncacr2026.azurecr.io
+      RESOURCE_GROUP: ledger-sync-server-rg
+      CONTAINER_APP: ledger-sync-api
+    steps:
+      - uses: actions/checkout@v4
+
+      # OIDC federated login — no client secret to store or rotate. See
+      # infra/README.md for how the app registration and its GitHub trust
+      # relationship were set up.
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image
+        run: docker build -t $ACR_LOGIN_SERVER/ledger-sync-api:${{ github.sha }} -t $ACR_LOGIN_SERVER/ledger-sync-api:latest .
+
+      # Uses the OIDC-derived Azure session to fetch an ACR token — no
+      # separate registry credential needed, just the AcrPush role granted
+      # to the service principal.
+      - name: Push image to ACR
+        run: |
+          az acr login --name ledgersyncacr2026
+          docker push $ACR_LOGIN_SERVER/ledger-sync-api:${{ github.sha }}
+          docker push $ACR_LOGIN_SERVER/ledger-sync-api:latest
+
+      - name: Deploy new revision
+        run: |
+          az containerapp update \
+            --name $CONTAINER_APP \
+            --resource-group $RESOURCE_GROUP \
+            --image $ACR_LOGIN_SERVER/ledger-sync-api:${{ github.sha }}
