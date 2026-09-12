@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    Shared by every project in the solution — the .NET equivalent of the
+    Flutter repo's analysis_options.yaml: one place that declares the bar
+    every file is held to, instead of repeating it per .csproj.
+  -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!--
+      Warnings fail the build only in Release (what CI runs) — not Debug,
+      so local iteration isn't blocked by an analyzer warning mid-change.
+      Same reasoning as the Flutter repo keeping `flutter analyze` a
+      separate, deliberate step rather than baked into every hot-reload.
+    -->
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+</Project>
