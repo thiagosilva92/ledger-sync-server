@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="xunit" />
@@ -24,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ledger.SyncServer.Infrastructure\Ledger.SyncServer.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Ledger.SyncServer.Domain\Ledger.SyncServer.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Ledger.SyncServer\Ledger.SyncServer.csproj" />
   </ItemGroup>
 
 </Project>

@@ -55,8 +55,41 @@ database or HTTP.
   batches, cursor pagination, and persistence across a fresh `EventLog`
   instance over the same database (the restart-survival proof, mirroring
   `DriftDeviceIdentityStore`'s equivalent test on the client).
-- ⏳ API host (the two Minimal API endpoints) — next
-- ⏳ CI (GitHub Actions, coverage via Codecov)
+- ✅ API host (`Ledger.SyncServer`) — Minimal APIs, endpoints extracted
+  into `EventsEndpoints.MapEventsEndpoints`, not left inline in
+  `Program.cs`. `POST /events` and `GET /events` accept and return raw
+  `JsonElement`s rather than a typed DTO — this server only ever needs
+  one field (`eventId`) out of what it's handed; everything else is
+  stored verbatim and returned unchanged, which is what "doesn't
+  understand the ledger's domain" (see above) actually looks like in the
+  wire format. 11 integration tests: 6 against `PostgresEventLog`
+  directly, 5 through real HTTP via `WebApplicationFactory<Program>` —
+  the layer that catches wiring mistakes the direct tests can't see (see
+  below).
+- ⏳ CI (GitHub Actions, coverage via Codecov) — next
+
+### A bug only a real HTTP call could have caught
+
+`Program.cs` originally read `ConnectionStrings:SyncDatabase` and threw
+immediately if it was missing — right after `WebApplication.CreateBuilder`,
+before `Build()`. Every `EventsEndpointsTests` test failed with that exact
+exception, not a test assertion failure: `WebApplicationFactory`'s
+`ConfigureAppConfiguration` overlay (the test's connection string,
+pointing at the Testcontainers instance) is applied during `Build()` —
+after `CreateBuilder()` returns, which is exactly when the eager read ran.
+The app's own configuration was still incomplete at the moment it asked
+for a value it needed.
+
+Fixed by moving the read *inside* `AddDbContext`'s configuration callback,
+which EF Core doesn't invoke until something first resolves
+`DbContextOptions<SyncDbContext>` from the container — well after
+`Build()`, by which point every configuration source, test overlay
+included, is actually in place. This isn't just a test-harness quirk: the
+same ordering bug would have hit a real deployment reading its connection
+string from an environment variable layered on late in `Program.cs`
+before `Build()` — the integration test caught something the unit tests
+(which never construct a `WebApplicationFactory` at all) structurally
+could not.
 
 ## Running
 
@@ -69,3 +102,11 @@ Requires the .NET SDK version pinned in [global.json](global.json), and
 Docker running locally (`tests/Ledger.SyncServer.IntegrationTests` needs
 it for Testcontainers — `dotnet test tests/Ledger.SyncServer.UnitTests`
 runs without it).
+
+To run the API itself, `ConnectionStrings:SyncDatabase` must point at a
+real PostgreSQL instance (no default is provided — a missing connection
+string fails loudly at startup, not silently):
+
+```bash
+dotnet run --project src/Ledger.SyncServer -- --ConnectionStrings:SyncDatabase="Host=localhost;Database=ledger_sync;Username=postgres;Password=postgres"
+```
