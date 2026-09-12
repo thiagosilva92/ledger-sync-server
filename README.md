@@ -138,8 +138,37 @@ post-MVP roadmap, not scope that was missing from day one.
   Postgres mid-test and confirms readiness reports unhealthy (503)
   while liveness stays healthy (200) throughout — the split is proven,
   not just described.
-- ⏳ Horizontal scaling demo (docker-compose, multiple replicas, a
-  reverse proxy)
+- ✅ Horizontal scaling demo — `docker-compose.yml` runs two explicitly
+  named API replicas (`api1`, `api2`) behind `Ledger.SyncServer.Gateway`,
+  a YARP reverse proxy round-robining between them. This is the payoff
+  of every earlier post-MVP checkpoint, not a bolt-on: YARP's cluster is
+  configured with an *active* health check against each replica's own
+  `/health/ready` (see [Authentication](#authentication) above and the
+  health checks entry below) — a replica that loses its Postgres
+  connection gets pulled out of rotation automatically, not just marked
+  unhealthy for someone to notice later.
+  - A schema migration runs once, in a dedicated one-shot `migrator`
+    service (`--migrate-only`, see `Program.cs`), before either replica
+    starts — not as a side effect of each replica's own startup. With
+    two replicas starting together, that's a real race (EF Core's
+    migration history table gives no cross-process locking guarantee),
+    not a hypothetical one.
+  - Verified by actually running it, not just by the compose file
+    parsing: `docker compose up`, pushed and pulled through the gateway
+    with a real API key, confirmed both replicas execute SQL (proving
+    round-robin, not one replica quietly doing all the work) by reading
+    each container's own logs. Stopped `api1` outright and watched
+    requests briefly return `502` until YARP's active health check
+    caught up (its `ConsecutiveFailures` policy takes more than one
+    10-second interval to act — a real, observed window, not
+    instantaneous failover) and then routed 100% correctly to `api2`
+    alone; restarted `api1` and confirmed it rejoined rotation on its
+    own once healthy again, no manual step needed either direction.
+  - Found and fixed a real environment issue along the way: PostgreSQL
+    18's official image changed its volume convention (a single mount
+    at `/var/lib/postgresql`, not directly at `.../data`) — discovered
+    by the container actually failing to start, not by reading the
+    changelog first.
 - ⏳ Rate limiting
 - ⏳ Structured logging + OpenTelemetry tracing
 - ⏳ Resilient database connection (`EnableRetryOnFailure`)
@@ -188,3 +217,31 @@ string fails loudly at startup, not silently):
 ```bash
 dotnet run --project src/Ledger.SyncServer -- --ConnectionStrings:SyncDatabase="Host=localhost;Database=ledger_sync;Username=postgres;Password=postgres"
 ```
+
+### Running the full stack (2 API replicas + gateway + Postgres)
+
+```bash
+docker compose up --build
+```
+
+Brings up Postgres, runs the schema migration once, starts both API
+replicas, and starts the gateway on `http://localhost:8080` — the only
+port exposed to the host; `api1`/`api2` are only reachable from inside
+the compose network, through the gateway.
+
+The compose file bakes in the hash of a fixed demo key,
+`demo-local-only-key` — fine for `docker compose up` on your own machine,
+never how a real deployment would handle secrets (see
+[Authentication](#authentication)):
+
+```bash
+curl -X POST http://localhost:8080/events \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: demo-local-only-key" \
+  -d '[{"eventId":"evt-1","aggregateId":"acc-1","eventType":"demo","timestamp":"1000-0-node","payload":{"hello":"world"}}]'
+
+curl "http://localhost:8080/events?after=0" -H "X-Api-Key: demo-local-only-key"
+```
+
+`docker compose down -v` tears everything down, including the Postgres
+volume.

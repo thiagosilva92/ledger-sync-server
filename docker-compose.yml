@@ -1,0 +1,80 @@
+x-api: &api
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment:
+    ConnectionStrings__SyncDatabase: >-
+      Host=postgres;Database=ledger_sync;Username=postgres;Password=postgres
+    # Hash of "demo-local-only-key" — see README's Authentication section.
+    # Fine to commit for a local demo; a real deployment would inject
+    # this the way any other secret is injected (environment variable
+    # from a secret store, not a value baked into a committed compose
+    # file).
+    ApiKeys__Hashes__0: 59b69b7c26135a56dda94467422ea4910356e0271b520f85f2c77ede5e55f0dc
+  depends_on:
+    migrator:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ledger_sync
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      # Postgres 18's official image changed convention: it now expects a
+      # single mount at the parent directory and manages its own
+      # version-specific subdirectory underneath, rather than a volume
+      # mounted directly at .../data — found by actually running this
+      # compose file, not by reading the Postgres 18 changelog in advance.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Runs the committed EF Core migration once, then exits — see
+  # Program.cs's "--migrate-only" branch for why this is a separate step
+  # rather than every replica migrating on its own startup.
+  migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["--migrate-only"]
+    environment:
+      ConnectionStrings__SyncDatabase: >-
+        Host=postgres;Database=ledger_sync;Username=postgres;Password=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Two explicitly-named replicas, not `deploy.replicas`/`--scale` — YARP's
+  # cluster below needs fixed, known hostnames to route to, and two named
+  # services reading identically from the `&api` anchor makes that
+  # explicit and readable instead of relying on Docker's own DNS-level
+  # round-robin across anonymously-scaled containers.
+  api1:
+    <<: *api
+
+  api2:
+    <<: *api
+
+  # The one port exposed to the host. Clients never talk to api1/api2
+  # directly — only through here, round-robined, with api-cluster's
+  # active health check (see Ledger.SyncServer.Gateway/appsettings.json)
+  # polling each replica's own /health/ready and pulling a replica out of
+  # rotation the moment its Postgres connection dies.
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Ledger.SyncServer.Gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api1
+      - api2
+
+volumes:
+  postgres-data:

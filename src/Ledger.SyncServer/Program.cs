@@ -37,6 +37,25 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Migrations run as a separate, one-shot step (the docker-compose
+// "migrator" service passes this flag, then exits), never as a side
+// effect of a normal replica starting up. With more than one replica —
+// the whole point of the horizontal-scaling setup this ships with — two
+// processes both calling Database.MigrateAsync() against a fresh
+// database at the same time is a real race, not a hypothetical one:
+// EF Core's migration history table gives no cross-process locking
+// guarantee against two migrators applying the same migration
+// concurrently. One designated migration step before any replica starts
+// serving traffic sidesteps the race entirely instead of hoping it
+// doesn't happen.
+if (args.Contains("--migrate-only"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<SyncDbContext>();
+    await db.Database.MigrateAsync();
+    return;
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 
