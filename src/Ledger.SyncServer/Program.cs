@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Scalar.AspNetCore;
 using Serilog;
 using Serilog.Enrichers.Span;
 using Serilog.Formatting.Compact;
@@ -54,6 +55,13 @@ builder.Services.AddOpenTelemetry()
         }
     });
 
+// .NET's own OpenAPI document generation (no Swashbuckle) plus Scalar
+// for a browsable UI on top of it — the current idiomatic pairing for
+// Minimal APIs, and lighter than Swashbuckle's full UI bundle. The
+// document itself is public: it's a description of the API surface, not
+// something an API key needs to gate.
+builder.Services.AddOpenApi();
+
 builder.Services.Configure<ApiKeySettings>(
     builder.Configuration.GetSection(ApiKeySettings.SectionName));
 builder.Services.AddSingleton<IApiKeyValidator, ApiKeyValidator>();
@@ -76,7 +84,24 @@ builder.Services.AddDbContext<SyncDbContext>(options =>
     var connectionString = builder.Configuration.GetConnectionString("SyncDatabase")
         ?? throw new InvalidOperationException(
             "Missing required configuration \"ConnectionStrings:SyncDatabase\".");
-    options.UseNpgsql(connectionString);
+    options.UseNpgsql(connectionString, npgsql =>
+        // A fleeting network blip or a Postgres failover shouldn't fail a
+        // push/pull outright — Npgsql retries the whole operation
+        // transparently. Deliberately modest (3 attempts, 2s max delay),
+        // not Npgsql's own defaults (6 attempts, 30s): this same
+        // DbContext also backs the /health/ready check below, and a
+        // health probe that can take up to 30s to report "unhealthy"
+        // during a real outage would undermine the failover story the
+        // horizontal-scaling checkpoint already proved — YARP's own
+        // active health check times a probe out at 5s. A separate
+        // DbContext with its own (non-retrying) options for health
+        // checks would decouple these two concerns more cleanly; not
+        // worth the extra moving part for what's still a fast-enough
+        // compromise today.
+        npgsql.EnableRetryOnFailure(
+            maxRetryCount: 3,
+            maxRetryDelay: TimeSpan.FromSeconds(2),
+            errorCodesToAdd: null));
 });
 builder.Services.AddScoped<IEventLog, PostgresEventLog>();
 
@@ -138,6 +163,13 @@ app.UseSerilogRequestLogging();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+
+// /openapi/v1.json (the raw document) and /scalar/v1 (a browsable UI
+// over it) — both anonymous, same reasoning as the health endpoints:
+// the caller here is a developer or a tool, not a device presenting a
+// key.
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 app.MapEventsEndpoints();
 app.MapHealthCheckEndpoints();

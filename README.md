@@ -216,8 +216,30 @@ post-MVP roadmap, not scope that was missing from day one.
     request carried the identical `TraceId`, confirming the log/trace
     correlation actually works, not just that both features exist
     independently.
-- ⏳ Resilient database connection (`EnableRetryOnFailure`)
-- ⏳ OpenAPI/Swagger
+- ✅ Resilient database connection — `EnableRetryOnFailure` on the
+  Npgsql connection, so a fleeting network blip or a Postgres failover
+  doesn't fail a push/pull outright. Deliberately modest (3 attempts, 2s
+  max delay), not Npgsql's own defaults (6 attempts, 30s): the same
+  `SyncDbContext` backs `/health/ready`, and a health probe that could
+  take up to 30s to report unhealthy during a real outage would
+  undermine the failover story the horizontal-scaling checkpoint already
+  proved — YARP's own active health check times a probe out at 5s. Two
+  unit tests (14 total) prove the retrying execution strategy is
+  actually configured (and that it's genuinely different from the
+  default) — not a full failure/recovery drill, which would need timing
+  a container outage precisely against a retry backoff window, exactly
+  the kind of flaky-by-construction test this repo has avoided
+  elsewhere.
+- ✅ OpenAPI/Swagger — .NET's own OpenAPI document generation
+  (`AddOpenApi()`, no Swashbuckle) plus Scalar for a browsable UI, the
+  current idiomatic pairing for Minimal APIs. Both endpoints get a
+  name, summary, and description via `.WithSummary()`/`.WithDescription()`,
+  so the generated document says something real, not just "200 OK, body:
+  object". The document and UI are public — same reasoning as the
+  health endpoints, the caller is a developer or a tool, not a device
+  with a key. 3 new integration tests (23 total): the document is valid
+  JSON and describes both `/events` operations, and the UI page loads,
+  all without an API key.
 - ⏳ A real, public, deployed instance
 
 ### A bug only a real HTTP call could have caught
@@ -262,6 +284,9 @@ string fails loudly at startup, not silently):
 ```bash
 dotnet run --project src/Ledger.SyncServer -- --ConnectionStrings:SyncDatabase="Host=localhost;Database=ledger_sync;Username=postgres;Password=postgres"
 ```
+
+Once it's running, the API's own docs are at `http://localhost:5000/scalar/v1`
+(or whatever port `dotnet run` prints) — no API key needed to view them.
 
 ### Running the full stack (2 API replicas + gateway + Postgres)
 

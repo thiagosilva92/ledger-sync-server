@@ -26,10 +26,28 @@ public static class EventsEndpoints
     {
         app.MapPost("/events", PushAsync)
             .RequireAuthorization()
-            .RequireRateLimiting(RateLimitingPolicies.PerApiKey);
+            .RequireRateLimiting(RateLimitingPolicies.PerApiKey)
+            .WithName("PushEvents")
+            .WithSummary("Push a batch of events, de-duplicated by eventId.")
+            .WithDescription(
+                "Idempotent to a retried call: an event id already on "
+                    + "record is silently skipped, not duplicated or "
+                    + "rejected. Each element is stored and later returned "
+                    + "verbatim — this server only reads its \"eventId\" "
+                    + "field, nothing else about its shape is validated.")
+            .WithTags("Events");
         app.MapGet("/events", PullAsync)
             .RequireAuthorization()
-            .RequireRateLimiting(RateLimitingPolicies.PerApiKey);
+            .RequireRateLimiting(RateLimitingPolicies.PerApiKey)
+            .WithName("PullEvents")
+            .WithSummary("Pull events after a sequence cursor, paginated.")
+            .WithDescription(
+                "\"after\" is this server's own sequence number, opaque to "
+                    + "the caller — always the \"remoteSequence\" from a "
+                    + "previous call's response, starting from 0. An empty "
+                    + "\"events\" array means there's nothing newer, not an "
+                    + "error.")
+            .WithTags("Events");
         return app;
     }
 
