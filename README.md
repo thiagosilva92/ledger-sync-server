@@ -1,5 +1,8 @@
 # ledger-sync-server
 
+[![CI](https://github.com/thiagosilva92/ledger-sync-server/actions/workflows/ci.yaml/badge.svg)](https://github.com/thiagosilva92/ledger-sync-server/actions/workflows/ci.yaml)
+[![codecov](https://codecov.io/gh/thiagosilva92/ledger-sync-server/graph/badge.svg)](https://codecov.io/gh/thiagosilva92/ledger-sync-server)
+
 The server side of `event-sourced-ledger`'s sync story: a minimal ASP.NET
 Core API that lets multiple devices exchange events through a shared
 remote, playing the role `FakeSyncTransport` stands in for on the client
@@ -66,7 +69,13 @@ database or HTTP.
   directly, 5 through real HTTP via `WebApplicationFactory<Program>` —
   the layer that catches wiring mistakes the direct tests can't see (see
   below).
-- ⏳ CI (GitHub Actions, coverage via Codecov) — next
+- ✅ CI (GitHub Actions) — one job: restore, build in Release (where
+  `TreatWarningsAsErrors` actually applies), `dotnet test` with coverage
+  collection, upload to Codecov. No separate Docker setup step: GitHub's
+  `ubuntu-latest` runners ship with Docker preinstalled, which is all
+  `Testcontainers.PostgreSql` needs. Verified by running the exact same
+  command sequence locally before trusting it in CI, the same discipline
+  as every other checkpoint in this repo (and the client repo before it).
 
 ### A bug only a real HTTP call could have caught
 

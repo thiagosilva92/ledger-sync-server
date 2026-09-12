@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads global.json, so CI builds with the exact SDK pinned for
+      # local development — no separate version to keep in sync by hand.
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      # Release, not Debug: Directory.Build.props only turns on
+      # TreatWarningsAsErrors for Release, the same reasoning the client
+      # repo uses for keeping `flutter analyze` a deliberate separate
+      # step rather than baked into every build.
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      # No Docker setup step needed: GitHub's ubuntu-latest runners ship
+      # with Docker preinstalled, which is all Testcontainers.PostgreSql
+      # needs to spin up a real Postgres per integration test.
+      - name: Test
+        run: >
+          dotnet test --no-build -c Release
+          --collect:"XPlat Code Coverage"
+          --results-directory ./coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage
+          fail_ci_if_error: false
