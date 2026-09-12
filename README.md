@@ -125,7 +125,19 @@ post-MVP roadmap, not scope that was missing from day one.
   every existing endpoint test updated to authenticate — proving the new
   requirement doesn't just exist, it's actually enforced on the
   endpoints that matter.
-- ⏳ Health checks — next
+- ✅ Health checks — `/health/live` and `/health/ready`, deliberately
+  answering different questions: liveness runs zero checks (`Predicate
+  = _ => false`) and only proves the process can respond to HTTP at
+  all — a database outage is not a reason for an orchestrator to kill
+  and restart a process that can't fix the database by restarting.
+  Readiness runs `AddDbContextCheck<SyncDbContext>` (tagged `"ready"`),
+  so a load balancer or orchestrator knows to stop sending this replica
+  traffic the moment Postgres becomes unreachable. Neither endpoint
+  requires an API key — the caller is infrastructure, not a device.
+  4 integration tests, including one that stops the real Testcontainers
+  Postgres mid-test and confirms readiness reports unhealthy (503)
+  while liveness stays healthy (200) throughout — the split is proven,
+  not just described.
 - ⏳ Horizontal scaling demo (docker-compose, multiple replicas, a
   reverse proxy)
 - ⏳ Rate limiting

@@ -32,12 +32,16 @@ builder.Services.AddDbContext<SyncDbContext>(options =>
 });
 builder.Services.AddScoped<IEventLog, PostgresEventLog>();
 
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<SyncDbContext>(name: "postgres", tags: ["ready"]);
+
 var app = builder.Build();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapEventsEndpoints();
+app.MapHealthCheckEndpoints();
 
 app.Run();
 
