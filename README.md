@@ -455,3 +455,49 @@ trace, two services.
 
 `docker compose down -v` tears everything down, including the Postgres
 volume.
+
+## Load testing
+
+`tests/Ledger.SyncServer.LoadTests` is a small [NBomber](https://nbomber.com/)
+console app — not part of `dotnet test` or `ci.yaml`, since it needs a
+real, running server, the same reasoning the client repo's
+`http_sync_transport_live_test.dart` is excluded from its own default
+suite. See [ADR 0009](docs/adr/0009-nbomber-for-load-testing.md) for why
+NBomber over an external tool like k6.
+
+```bash
+docker compose up -d
+dotnet run --project tests/Ledger.SyncServer.LoadTests -c Release -- ratelimit
+docker compose down
+
+RATE_LIMIT_PERMIT=100000 docker compose up -d
+dotnet run --project tests/Ledger.SyncServer.LoadTests -c Release -- throughput
+docker compose down
+```
+
+**`throughput`** — real measured numbers from an actual run, round-robining
+push-then-pull cycles across five demo devices through the real 2-replica
+YARP gateway: **2,070 requests, 0 failures, 51.75 req/s sustained**; push
+latency p50/p95/p99 = 8/22/44ms, pull p50/p95/p99 = 4/8/17ms.
+
+**`ratelimit`** — run against the *default* 100-requests-per-60-seconds
+limit, sending 135 requests from one device in 65 seconds. The result
+wasn't the one the scenario was written to demonstrate:
+
+> All 135 requests got `200`. Zero `429`s — even though 135 > 100.
+
+Splitting the count by replica in the containers' own logs explained why:
+67 landed on `api1`, 68 on `api2`. `Microsoft.AspNetCore.RateLimiting`'s
+fixed-window limiter keeps its counters **in-memory, per process** — each
+replica independently tracks its own 100-request budget for that key.
+Across this 2-replica topology, one device's *effective* system-wide
+budget is closer to 200/60s than the configured 100/60s, and it scales
+with replica count. Nothing in the existing test suite could have caught
+this: `WebApplicationFactory`-based integration tests run one in-process
+instance, and the local failover demo never sent enough traffic from one
+key to approach the limit. Only a real load test against the real
+multi-replica topology surfaced it — see
+[ADR 0004](docs/adr/0004-rate-limit-by-api-key-not-ip.md#found-later-by-actually-load-testing-it)
+for why this is a documented, accepted trade-off (a true fix needs a
+distributed counter, e.g. Redis-backed) rather than something left for
+someone to discover by accident in production.

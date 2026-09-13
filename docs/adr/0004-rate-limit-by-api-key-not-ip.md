@@ -38,6 +38,27 @@ production default.
   rate-limiting independently; `/health/*` and the OpenAPI docs are
   intentionally exempt, per the main README).
 
+### Found later, by actually load testing it
+
+See [ADR 0009](0009-nbomber-for-load-testing.md): the built-in limiter's
+counters live in-memory, per process. In the 2-replica `docker-compose`
+topology, one key's budget is enforced independently by each replica — a
+real load test sending 135 requests to one key against a 100/60s limit got
+zero `429`s, because YARP split them 67/68 across two replicas that have
+never heard of each other's counts. The *effective* system-wide budget for
+a key scales with replica count, not the configured `PermitLimit` alone.
+This is a known, accepted limitation of an in-memory limiter under
+horizontal scaling, not a bug in this decision's reasoning — closing it
+for real would need a distributed counter (e.g. Redis-backed), which is
+real infrastructure this portfolio server's actual scale doesn't warrant
+taking on.
+
+The live Azure deployment (see the main README's Deployment section)
+currently runs a single instance, so this doesn't change its effective
+behavior today — but scaling it to more than one replica without also
+addressing this would carry the same limitation live, not just in the
+local `docker-compose` demo.
+
 ## Alternatives considered
 
 - **IP-based partitioning** — rejected for the shared-NAT and

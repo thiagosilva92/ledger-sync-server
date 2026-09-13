@@ -11,6 +11,22 @@ x-api: &api
     # from a secret store, not a value baked into a committed compose
     # file).
     ApiKeys__Hashes__0: 59b69b7c26135a56dda94467422ea4910356e0271b520f85f2c77ede5e55f0dc
+    # Four more demo keys ("loadtest-device-N-key", N = 1..4), same
+    # commit-is-fine reasoning as __0 — used by
+    # tests/Ledger.SyncServer.LoadTests' throughput scenario to simulate
+    # several independent devices rather than one key alone.
+    ApiKeys__Hashes__1: b71f9be61299cb8c723c65bb105c645346f1253fec66cac03373ab3261ffc3c7
+    ApiKeys__Hashes__2: e95298781ad2286160aa2e37881469017e740dc1c32a09b36c2eb92ac7d1a504
+    ApiKeys__Hashes__3: 94c0c01f8b12add1a2fded7d377c94d6ed1886cd2147caf86639be43419d9e9d
+    ApiKeys__Hashes__4: 43a0b82c3caf1fe5a865fb5292d127b19959deadc7d1c39ea3be8ec64f67044c
+    # Overridable so the load test's two scenarios can each ask for what
+    # they actually need: the default (100/60s) to prove the limiter
+    # holds under real concurrent traffic, or a deliberately high ceiling
+    # to measure raw throughput without the limiter being what's
+    # actually being measured. Plain `docker compose up` keeps the
+    # production-matching default.
+    RateLimiting__PermitLimit: ${RATE_LIMIT_PERMIT:-100}
+    RateLimiting__WindowSeconds: ${RATE_LIMIT_WINDOW_SECONDS:-60}
     Observability__OtlpEndpoint: http://jaeger:4317
   depends_on:
     migrator:

@@ -60,6 +60,10 @@ dlldata.c
 # Benchmark Results
 BenchmarkDotNet.Artifacts/
 
+# NBomber load test run output (tests/Ledger.SyncServer.LoadTests) — one
+# timestamped folder per run, not meant to be committed.
+tests/Ledger.SyncServer.LoadTests/reports/
+
 # .NET
 project.lock.json
 project.fragment.lock.json
