@@ -38,4 +38,14 @@ Running `what-if` against the resources that were created by hand shows two harm
 
 Neither is a template bug — applying it wouldn't break anything — but it's why `what-if` isn't a clean no-op today, and it's why `infra.yaml` defaults to preview-only rather than auto-applying.
 
-A leftover `ca30422618e4acr` registry (in `eastus`) also shows up as an ignored resource in `what-if` output: it's an orphan from an earlier failed deploy attempt (ACR Tasks is disabled on trial subscriptions — see the main README), was never used by the running app, and this template correctly leaves it alone since nothing here manages it.
+A leftover `ca30422618e4acr` registry (in `eastus`) also showed up as an ignored resource in the first `what-if` run: it was an orphan from an earlier failed deploy attempt (ACR Tasks is disabled on trial subscriptions — see the main README), was never used by the running app, and has since been deleted.
+
+## A real obstacle hit setting up OIDC: the federated credential subject format
+
+The first `deploy` run failed with `AADSTS700213: No matching federated identity record found`, even though the federated credential's subject looked right at a glance (`repo:thiagosilva92/ledger-sync-server:ref:refs/heads/main` — the classic, widely-documented format). The actual subject GitHub presented, visible in the run's Annotations panel, was:
+
+```
+repo:thiagosilva92@11576512/ledger-sync-server@1366889145:ref:refs/heads/main
+```
+
+This repository has GitHub's newer OIDC subject-claim format, which embeds the owner's and repository's immutable numeric IDs (`owner@ownerId/repo@repoId`) instead of just their current names — a real GitHub security feature that stops a subject claim from being silently reused if the repo or owner is later renamed or transferred, at the cost of not matching most third-party tutorials (including the one this project's federated credentials were first set up from). Fixed by recreating both federated credentials with the ID-qualified subject, after confirming the exact IDs via `GET /repos/thiagosilva92/ledger-sync-server` (`owner.id` and `id`).
