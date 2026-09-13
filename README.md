@@ -263,8 +263,23 @@ post-MVP roadmap, not scope that was missing from day one.
   simplified versus the full local `docker-compose` topology, and for
   two real deployment obstacles found and fixed along the way.
 
-**Every item in this repo's roadmap, from the MVP through the last
-post-MVP checkpoint, is now done.**
+**Every item in this repo's original roadmap, from the MVP through the
+last post-MVP checkpoint, was done at this point.** Hardening continued
+afterward — Infrastructure as Code and a real CD pipeline, Architecture
+Decision Records, managed-identity ACR pull (see
+[docs/adr](docs/adr/README.md) and [Deployment](#deployment) for both)
+— and automated dependency/security scanning:
+
+- ✅ Dependabot (`.github/dependabot.yml`) — weekly update PRs for NuGet
+  packages (respecting Central Package Management), the two Dockerfiles'
+  base images, and the GitHub Actions themselves.
+- ✅ CodeQL (`.github/workflows/codeql.yml`) — static security analysis
+  on every push/PR to `main` plus a weekly scheduled scan (catches a
+  newly-disclosed vulnerability in code that hasn't changed, not just a
+  new one introduced by a change). A manual build step mirrors
+  `ci.yaml`'s own restore/build exactly, rather than trusting CodeQL's
+  autobuild to figure out a multi-project solution with Central Package
+  Management on its own.
 
 ### A bug only a real HTTP call could have caught
 

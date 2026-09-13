@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Application and test project dependencies (NuGet), managed centrally
+  # via Directory.Packages.props — Dependabot understands central package
+  # management and opens PRs against the version pins there.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Base images for both Dockerfiles (SDK/ASP.NET runtime tags).
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "docker"
+    directory: "/src/Ledger.SyncServer.Gateway"
+    schedule:
+      interval: "weekly"
+
+  # The GitHub Actions themselves (actions/checkout, azure/login, etc.) —
+  # pinned action versions are a supply-chain surface too.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
