@@ -19,3 +19,4 @@ survives independently of the person who made it.
 | [0005](0005-yarp-compose-not-kubernetes.md) | YARP + Docker Compose for horizontal scaling, not Kubernetes |
 | [0006](0006-azure-container-apps-simplified-deployment.md) | Azure Container Apps, and a deliberately simplified live topology |
 | [0007](0007-split-cd-from-infra-changes.md) | Routine app deploys and infrastructure changes are separate pipelines |
+| [0008](0008-managed-identity-for-acr-pull.md) | The Container App pulls from ACR via managed identity, not admin credentials |

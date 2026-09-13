@@ -74,9 +74,10 @@ either.
 The non-obvious calls behind this codebase — Minimal APIs over MVC,
 hashed API keys over OAuth, PostgreSQL behind a domain-owned port,
 rate limiting by API key instead of IP, YARP + Compose over Kubernetes,
-the simplified Azure Container Apps deployment, and splitting routine
-app deploys from manual infrastructure changes — are written up with
-context, consequences, and rejected alternatives in
+the simplified Azure Container Apps deployment, splitting routine app
+deploys from manual infrastructure changes, and pulling from ACR via
+managed identity instead of stored admin credentials — are written up
+with context, consequences, and rejected alternatives in
 [docs/adr](docs/adr/README.md).
 
 ## Status

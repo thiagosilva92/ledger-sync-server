@@ -28,13 +28,30 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # main.bicep's `containerImage` param defaults to `:latest` — fine
+      # for a from-scratch recreation, wrong here: applying an infra-only
+      # change must never change *which app version* is running as a side
+      # effect. Pinning it to whatever image is live right now keeps this
+      # workflow's blast radius to infrastructure only, the same
+      # separation of concerns ADR 0007 (routine deploys vs. infra
+      # changes) exists for in the first place.
+      - name: Capture the currently running image
+        id: current_image
+        run: |
+          image=$(az containerapp show \
+            --name ledger-sync-api \
+            --resource-group ledger-sync-server-rg \
+            --query "properties.template.containers[0].image" -o tsv)
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
       - name: What-if (preview only, changes nothing)
         run: |
           az deployment group what-if \
             --resource-group ledger-sync-server-rg \
             --template-file infra/main.bicep \
             --parameters postgresAdminPassword='${{ secrets.POSTGRES_ADMIN_PASSWORD }}' \
-            --parameters apiKeyHash='${{ secrets.API_KEY_HASH_0 }}'
+            --parameters apiKeyHash='${{ secrets.API_KEY_HASH_0 }}' \
+            --parameters containerImage='${{ steps.current_image.outputs.image }}'
 
       - name: Apply
         if: ${{ inputs.apply }}
@@ -43,4 +60,5 @@ jobs:
             --resource-group ledger-sync-server-rg \
             --template-file infra/main.bicep \
             --parameters postgresAdminPassword='${{ secrets.POSTGRES_ADMIN_PASSWORD }}' \
-            --parameters apiKeyHash='${{ secrets.API_KEY_HASH_0 }}'
+            --parameters apiKeyHash='${{ secrets.API_KEY_HASH_0 }}' \
+            --parameters containerImage='${{ steps.current_image.outputs.image }}'

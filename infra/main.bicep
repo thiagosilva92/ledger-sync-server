@@ -84,7 +84,12 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
     name: 'Basic'
   }
   properties: {
-    adminUserEnabled: true
+    // No admin user: the Container App pulls via its own system-assigned
+    // managed identity (see acrPullRoleAssignment below), and the CD
+    // pipeline pushes via the GitHub OIDC service principal's AcrPush
+    // role — neither needs a static username/password. See
+    // docs/adr/0008-managed-identity-for-acr-pull.md.
+    adminUserEnabled: false
   }
 }
 
@@ -136,6 +141,13 @@ resource postgresDatabase 'Microsoft.DBforPostgreSQL/flexibleServers/databases@2
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
   location: location
+  // System-assigned identity, used solely to pull from ACR (see
+  // acrPullRoleAssignment below) — no client secret or stored password
+  // for image pulls, mirroring the OIDC-not-a-stored-secret approach the
+  // CD pipeline already uses. See docs/adr/0008.
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     managedEnvironmentId: containerAppEnv.id
     configuration: {
@@ -148,15 +160,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: acr.properties.loginServer
-          username: acr.listCredentials().username
-          passwordSecretRef: 'acr-password'
+          identity: 'system'
         }
       ]
       secrets: [
-        {
-          name: 'acr-password'
-          value: acr.listCredentials().passwords[0].value
-        }
         {
           name: 'db-connection-string'
           value: 'Host=${postgres.properties.fullyQualifiedDomainName};Database=${postgresDatabaseName};Username=${postgresAdminLogin};Password=${postgresAdminPassword};SSL Mode=Require;Trust Server Certificate=true'
@@ -193,6 +200,23 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         maxReplicas: 1
       }
     }
+  }
+}
+
+// Grants the Container App's own system-assigned identity permission to
+// pull images — the thing `registries[].identity: 'system'` above
+// actually relies on. Built-in "AcrPull" role definition ID, scoped to
+// this registry only (least privilege: pull, not push or manage).
+resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, containerApp.id, 'AcrPull')
+  scope: acr
+  properties: {
+    principalId: containerApp.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+    )
   }
 }
 

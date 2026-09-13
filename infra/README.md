@@ -19,6 +19,10 @@ Both workflows authenticate to Azure via OIDC federated credentials (an Azure AD
 - `Contributor` on the `ledger-sync-server-rg` resource group (needed by `infra.yaml` to manage resources, and by the `deploy` job to update the Container App).
 - `AcrPush` on the registry specifically (needed by the `deploy` job to push images).
 
+The Container App itself doesn't use this app registration at all for pulling images — it has its own system-assigned managed identity with `AcrPull` on the registry (see [ADR 0008](docs/adr/0008-managed-identity-for-acr-pull.md)). Between OIDC for GitHub and managed identity for the Container App, no static credential exists anywhere in this deployment for either pushing or pulling images — the registry's admin user is disabled (`adminUserEnabled: false`).
+
+`infra.yaml` reads the Container App's *currently running* image with `az containerapp show` and passes it back as `main.bicep`'s `containerImage` parameter before running `what-if` or `apply` — otherwise that parameter's default (`:latest`) would let a purely infrastructure-focused change silently move the running app off the specific commit-tagged image the last `deploy` run had put it on. An infra apply's blast radius should be infrastructure, never the deployed app version — see ADR 0008's Consequences for how this was actually caught (a `what-if` run showed an unexpected image diff before anything was applied).
+
 Required repository secrets:
 
 | Secret | Used by | Value |
