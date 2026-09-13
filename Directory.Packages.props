@@ -9,7 +9,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <!--
       Pinned to match the EF Core version Npgsql.EntityFrameworkCore.PostgreSQL
       10.0.3 itself depends on (10.0.4) — Design defaults to a newer patch
