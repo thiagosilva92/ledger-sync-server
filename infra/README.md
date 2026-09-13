@@ -18,6 +18,7 @@ Splitting these two was a deliberate choice, not an oversight: a routine code pu
 Both workflows authenticate to Azure via OIDC federated credentials (an Azure AD app registration trusts GitHub's token issuer for this specific repo) — no client secret is stored or rotated. The app registration (`ledger-sync-server-github-cd`) has:
 - `Contributor` on the `ledger-sync-server-rg` resource group (needed by `infra.yaml` to manage resources, and by the `deploy` job to update the Container App).
 - `AcrPush` on the registry specifically (needed by the `deploy` job to push images).
+- `User Access Administrator`, scoped to the registry only — needed once `main.bicep` started creating a role assignment (see [ADR 0008](docs/adr/0008-managed-identity-for-acr-pull.md)). `Contributor` deliberately excludes `Microsoft.Authorization/roleAssignments/write` (a real Azure RBAC design choice: managing resources and managing who has access to them are separate permissions), so granting roles from within a template needs this in addition, kept as narrow as possible — scoped to one resource, not the resource group.
 
 The Container App itself doesn't use this app registration at all for pulling images — it has its own system-assigned managed identity with `AcrPull` on the registry (see [ADR 0008](docs/adr/0008-managed-identity-for-acr-pull.md)). Between OIDC for GitHub and managed identity for the Container App, no static credential exists anywhere in this deployment for either pushing or pulling images — the registry's admin user is disabled (`adminUserEnabled: false`).
 
