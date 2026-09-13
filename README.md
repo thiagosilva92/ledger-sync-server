@@ -501,3 +501,8 @@ multi-replica topology surfaced it — see
 for why this is a documented, accepted trade-off (a true fix needs a
 distributed counter, e.g. Redis-backed) rather than something left for
 someone to discover by accident in production.
+
+## License
+
+[MIT](LICENSE). See [CHANGELOG.md](CHANGELOG.md) for the history of
+notable changes.

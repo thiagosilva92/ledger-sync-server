@@ -20,6 +20,9 @@
       separate, deliberate step rather than baked into every hot-reload.
     -->
     <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+
+    <!-- What CHANGELOG.md's "[1.0.0]" heading refers to. -->
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
 </Project>
