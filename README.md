@@ -69,6 +69,16 @@ decoupled from the mobile app's event schema, the same way
 `DriftEventStore` on the client never needs to know what a "leg" is
 either.
 
+## Architecture Decision Records
+
+The non-obvious calls behind this codebase — Minimal APIs over MVC,
+hashed API keys over OAuth, PostgreSQL behind a domain-owned port,
+rate limiting by API key instead of IP, YARP + Compose over Kubernetes,
+the simplified Azure Container Apps deployment, and splitting routine
+app deploys from manual infrastructure changes — are written up with
+context, consequences, and rejected alternatives in
+[docs/adr](docs/adr/README.md).
+
 ## Status
 
 Built in dependency order, same discipline as the client repo: pure
