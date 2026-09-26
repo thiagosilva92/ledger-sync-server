@@ -15,7 +15,7 @@ jobs:
       # Reads global.json, so CI builds with the exact SDK pinned for
       # local development — no separate version to keep in sync by hand.
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
