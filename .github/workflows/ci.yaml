@@ -10,7 +10,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Reads global.json, so CI builds with the exact SDK pinned for
       # local development — no separate version to keep in sync by hand.
@@ -64,7 +64,7 @@ jobs:
       RESOURCE_GROUP: ledger-sync-server-rg
       CONTAINER_APP: ledger-sync-api
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # OIDC federated login — no client secret to store or rotate. See
       # infra/README.md for how the app registration and its GitHub trust
